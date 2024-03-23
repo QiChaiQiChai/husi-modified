@@ -1538,17 +1538,23 @@ class ConfigurationFragment @JvmOverloads constructor(
                     )
                 }
 
-                var address = if (pf.blurredAddress) {
-                    proxyEntity.displayAddress().blur()
-                } else {
-                    proxyEntity.displayAddress()
-                }
-                if (showTraffic && address.length >= 30) {
-                    address = address.substring(0, 27) + "..."
-                }
+                val address = when {
+                    pf.blurredAddress -> {
+                        val tmpAddress = proxyEntity.displayAddress()
 
-                if (proxyEntity.requireBean().name.isBlank() || !pf.alwaysShowAddress) {
-                    address = ""
+                        // length is not bigger than 20.
+                        val blurredAddress = tmpAddress.blur()
+                        if (tmpAddress == profileName.text) profileName.text = blurredAddress
+                        blurredAddress
+                    }
+
+                    showTraffic && proxyEntity.displayAddress().length >= 30 -> {
+                        proxyEntity.displayAddress().substring(0, 27) + "..."
+                    }
+
+                    proxyEntity.requireBean().name.isBlank() || !pf.alwaysShowAddress -> ""
+
+                    else -> proxyEntity.displayAddress()
                 }
 
                 profileAddress.text = address
