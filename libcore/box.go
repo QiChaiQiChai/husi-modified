@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	C "github.com/sagernet/sing-box/constant"
 	"libcore/protectserver"
 	"libcore/v2rayapilite"
+
+	C "github.com/sagernet/sing-box/constant"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/common/conntrack"
@@ -34,6 +35,7 @@ func ResetAllConnections(system bool) {
 
 type BoxInstance struct {
 	*box.Box
+
 	cancel context.CancelFunc
 
 	// state is sing-box state
@@ -42,8 +44,12 @@ type BoxInstance struct {
 	// 2: closed
 	state int
 
-	v2api        *v2rayapilite.V2RayServerLite
-	selector     *outbound.Selector
+	v2api *v2rayapilite.V2RayServerLite
+
+	selector *outbound.Selector
+	// You should not use this context!
+	ctxForSelector context.Context
+
 	pauseManager pause.Manager
 	servicePauseFields
 }
@@ -86,13 +92,11 @@ func NewSingBoxInstance(config string, forTest bool) (b *BoxInstance, err error)
 		pauseManager: service.FromContext[pause.Manager](ctx),
 	}
 
-	// TODO: remove
 	// selector
-	proxy, outboundHasProxy := b.Router().Outbound("proxy")
-	if outboundHasProxy {
-		selector, enabledSelector := proxy.(*outbound.Selector)
-		if enabledSelector {
+	if proxy, haveProxyOutbound := b.Router().Outbound("proxy"); haveProxyOutbound {
+		if selector, isSelector := proxy.(*outbound.Selector); isSelector {
 			b.selector = selector
+			b.ctxForSelector = ctx
 		}
 	}
 
@@ -104,6 +108,12 @@ func (b *BoxInstance) Start() (err error) {
 
 	if b.state == 0 {
 		b.state = 1
+		defer func() {
+			if b.selector != nil && b.ctxForSelector != nil && intfGUI != nil {
+				go b.listenSelectorChange(b.ctxForSelector, intfGUI.SelectorCallback)
+				b.ctxForSelector = nil
+			}
+		}()
 		return b.Box.Start()
 	}
 	return E.New("already started")
